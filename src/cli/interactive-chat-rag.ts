@@ -107,6 +107,30 @@ class InteractiveChatRAG {
         let memoriesUsed = 0;
 
         if (this.usePinecone && this.rag) {
+          // Build context with conversation history
+          let contextPrompt = `You are a helpful AI assistant with perfect memory.
+
+IMPORTANT INSTRUCTIONS:
+1. Use the RELEVANT MEMORIES section to understand the user's context and history
+2. Use the CURRENT CONVERSATION section to maintain context within this session
+3. Give helpful, intelligent responses based on what you remember about the user
+4. If memories are provided, reference them naturally in your response
+5. Answer questions, provide help, give advice - be genuinely useful!
+6. Don't just say "I'll remember this" - actually help the user with their request
+7. Be conversational and friendly
+8. If the user asks about past conversations, use the memories to answer accurately
+
+Remember: You're not just a storage system - you're a helpful assistant that remembers everything!`;
+
+          // Add current conversation history
+          if (this.conversationHistory.length > 0) {
+            contextPrompt += '\n\n=== CURRENT CONVERSATION ===\n\n';
+            this.conversationHistory.slice(-10).forEach(msg => {
+              contextPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
+            });
+            contextPrompt += '\n';
+          }
+
           // Use Pinecone RAG with lower threshold for better recall
           const result = await this.rag.retrieveAndGenerate(
             userInput,
@@ -115,46 +139,56 @@ class InteractiveChatRAG {
               topK: 10,
               filter: { userId: this.userId },
               threshold: 0.3,  // Lower threshold for better recall
-              systemPrompt: `You are a helpful AI assistant with perfect memory.
-
-IMPORTANT INSTRUCTIONS:
-1. Use the RELEVANT MEMORIES section to understand the user's context and history
-2. Give helpful, intelligent responses based on what you remember about the user
-3. If memories are provided, reference them naturally in your response
-4. Answer questions, provide help, give advice - be genuinely useful!
-5. Don't just say "I'll remember this" - actually help the user with their request
-6. Be conversational and friendly
-7. If the user asks about past conversations, use the memories to answer accurately
-
-Remember: You're not just a storage system - you're a helpful assistant that remembers everything!`
+              systemPrompt: contextPrompt
             }
           );
 
           response = result.response;
           memoriesUsed = result.memories.length;
+          
+          // Add to conversation history
+          this.conversationHistory.push({ role: 'user', content: userInput });
+          this.conversationHistory.push({ role: 'assistant', content: response });
         } else if (this.orchestrator) {
+          // Build context with conversation history
+          let contextPrompt = `You are a helpful AI assistant with perfect memory.
+
+IMPORTANT INSTRUCTIONS:
+1. Use the RELEVANT MEMORIES section to understand the user's context and history
+2. Use the CURRENT CONVERSATION section to maintain context within this session
+3. Give helpful, intelligent responses based on what you remember about the user
+4. If memories are provided, reference them naturally in your response
+5. Answer questions, provide help, give advice - be genuinely useful!
+6. Don't just say "I'll remember this" - actually help the user with their request
+7. Be conversational and friendly
+8. If the user asks about past conversations, use the memories to answer accurately
+
+Remember: You're not just a storage system - you're a helpful assistant that remembers everything!`;
+
+          // Add current conversation history
+          if (this.conversationHistory.length > 0) {
+            contextPrompt += '\n\n=== CURRENT CONVERSATION ===\n\n';
+            this.conversationHistory.slice(-10).forEach(msg => {
+              contextPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
+            });
+            contextPrompt += '\n';
+          }
+
           // Use local storage
           const result = await this.orchestrator.processQuery(userInput, {
             conversationId: this.conversationId,
             memoryFilter: { userId: this.userId },
             storeResponse: false,
             memoryTopK: 5,
-            systemPrompt: `You are a helpful AI assistant with perfect memory.
-
-IMPORTANT INSTRUCTIONS:
-1. Use the RELEVANT MEMORIES section to understand the user's context and history
-2. Give helpful, intelligent responses based on what you remember about the user
-3. If memories are provided, reference them naturally in your response
-4. Answer questions, provide help, give advice - be genuinely useful!
-5. Don't just say "I'll remember this" - actually help the user with their request
-6. Be conversational and friendly
-7. If the user asks about past conversations, use the memories to answer accurately
-
-Remember: You're not just a storage system - you're a helpful assistant that remembers everything!`
+            systemPrompt: contextPrompt
           });
 
           response = result.response;
           memoriesUsed = result.memoriesUsed;
+          
+          // Add to conversation history
+          this.conversationHistory.push({ role: 'user', content: userInput });
+          this.conversationHistory.push({ role: 'assistant', content: response });
         } else {
           throw new Error('No storage system available');
         }
