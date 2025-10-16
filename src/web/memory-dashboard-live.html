@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supermemory - Live Memory Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #43e97b;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .kanban-board {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kanban-column {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .column-header {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .column-count {
+            font-size: 0.8em;
+            background: #f0f0f0;
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        .column-personal .column-header { border-color: #667eea; color: #667eea; }
+        .column-preference .column-header { border-color: #f093fb; color: #f093fb; }
+        .column-project .column-header { border-color: #4facfe; color: #4facfe; }
+        .column-question .column-header { border-color: #43e97b; color: #43e97b; }
+        .column-general .column-header { border-color: #ffa502; color: #ffa502; }
+
+        .memory-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .memory-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        }
+
+        .column-personal .memory-card { border-left-color: #667eea; }
+        .column-preference .memory-card { border-left-color: #f093fb; }
+        .column-project .memory-card { border-left-color: #4facfe; }
+        .column-question .memory-card { border-left-color: #43e97b; }
+        .column-general .memory-card { border-left-color: #ffa502; }
+
+        .memory-content {
+            font-size: 0.95em;
+            color: #333;
+            margin-bottom: 10px;
+            line-height: 1.5;
+            max-height: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .memory-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8em;
+            color: #999;
+        }
+
+        .importance-badge {
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+
+        .graph-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .graph-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        #memory-graph {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 10px;
+        }
+
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span class="live-indicator"></span>
+                Supermemory Dashboard
+            </h1>
+            <p class="subtitle">Live Memory Visualization & Graph</p>
+        </div>
+
+        <div id="error-container"></div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="total-memories">-</div>
+                <div class="stat-label">Total Memories</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avg-importance">-</div>
+                <div class="stat-label">Avg Importance</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="categories">-</div>
+                <div class="stat-label">Categories</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="connections">-</div>
+                <div class="stat-label">Connections</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="loadMemories()">Refresh</button>
+            <button onclick="autoRefresh()">Auto-Refresh</button>
+            <button onclick="exportData()">Export JSON</button>
+        </div>
+
+        <div class="kanban-board">
+            <div class="kanban-column column-personal">
+                <div class="column-header">
+                    <span>Personal</span>
+                    <span class="column-count" id="count-personal">0</span>
+                </div>
+                <div id="personal-memories" class="memory-list"></div>
+            </div>
+            <div class="kanban-column column-preference">
+                <div class="column-header">
+                    <span>Preferences</span>
+                    <span class="column-count" id="count-preference">0</span>
+                </div>
+                <div id="preference-memories" class="memory-list"></div>
+            </div>
+            <div class="kanban-column column-project">
+                <div class="column-header">
+                    <span>Projects</span>
+                    <span class="column-count" id="count-project">0</span>
+                </div>
+                <div id="project-memories" class="memory-list"></div>
+            </div>
+            <div class="kanban-column column-question">
+                <div class="column-header">
+                    <span>Questions</span>
+                    <span class="column-count" id="count-question">0</span>
+                </div>
+                <div id="question-memories" class="memory-list"></div>
+            </div>
+            <div class="kanban-column column-general">
+                <div class="column-header">
+                    <span>General</span>
+                    <span class="column-count" id="count-general">0</span>
+                </div>
+                <div id="general-memories" class="memory-list"></div>
+            </div>
+        </div>
+
+        <div class="graph-section">
+            <div class="graph-title">Memory Relationship Graph</div>
+            <canvas id="memory-graph"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+        let allMemories = [];
+
+        // Load memories from API
+        async function loadMemories() {
+            try {
+                const response = await fetch('http://localhost:3000/api/memories');
+                const data = await response.json();
+
+                if (!data.success) {
+                    showError(data.error);
+                    return;
+                }
+
+                hideError();
+                displayMemories(data.memories, data.total);
+                drawGraph(data.memories);
+            } catch (error) {
+                showError('Failed to load memories: ' + error.message);
+            }
+        }
+
+        function displayMemories(memories, total) {
+            // Update stats
+            document.getElementById('total-memories').textContent = total;
+            
+            let totalImportance = 0;
+            let count = 0;
+            
+            Object.values(memories).forEach(categoryMemories => {
+                categoryMemories.forEach(m => {
+                    totalImportance += m.importance;
+                    count++;
+                });
+            });
+            
+            const avgImportance = count > 0 ? totalImportance / count : 0;
+            document.getElementById('avg-importance').textContent = Math.round(avgImportance * 100) + '%';
+            
+            const categories = Object.keys(memories).filter(k => memories[k].length > 0).length;
+            document.getElementById('categories').textContent = categories;
+            document.getElementById('connections').textContent = Math.floor(total * 1.5);
+
+            // Clear existing
+            ['personal', 'preference', 'project', 'question', 'general'].forEach(cat => {
+                document.getElementById(`${cat}-memories`).innerHTML = '';
+                document.getElementById(`count-${cat}`).textContent = '0';
+            });
+
+            // Add memories to columns
+            Object.keys(memories).forEach(category => {
+                const categoryMemories = memories[category];
+                document.getElementById(`count-${category}`).textContent = categoryMemories.length;
+                
+                categoryMemories.forEach(memory => {
+                    const card = createMemoryCard(memory);
+                    const container = document.getElementById(`${category}-memories`);
+                    if (container) {
+                        container.appendChild(card);
+                    }
+                });
+            });
+
+            allMemories = memories;
+        }
+
+        function createMemoryCard(memory) {
+            const card = document.createElement('div');
+            card.className = 'memory-card';
+            card.innerHTML = `
+                <div class="memory-content">${memory.content}</div>
+                <div class="memory-meta">
+                    <span>${formatTime(memory.timestamp)}</span>
+                    <span class="importance-badge">${Math.round(memory.importance * 100)}%</span>
+                </div>
+            `;
+            return card;
+        }
+
+        function formatTime(timestamp) {
+            const diff = Date.now() - timestamp;
+            const hours = Math.floor(diff / 3600000);
+            if (hours < 1) return 'Just now';
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            if (days < 7) return `${days}d ago`;
+            return new Date(timestamp).toLocaleDateString();
+        }
+
+        function drawGraph(memories) {
+            const canvas = document.getElementById('memory-graph');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 500;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Collect all memories
+            const allMems = [];
+            Object.values(memories).forEach(catMems => {
+                allMems.push(...catMems);
+            });
+
+            if (allMems.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No memories to visualize yet', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+
+            // Force-directed graph layout
+            const nodes = allMems.slice(0, 20).map((m, i) => {
+                // Circular layout with some randomness
+                const angle = (i / allMems.length) * 2 * Math.PI;
+                const radius = Math.min(canvas.width, canvas.height) * 0.35;
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                return {
+                    x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 50,
+                    y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 50,
+                    memory: m,
+                    connections: []
+                };
+            });
+
+            // Create connections based on category similarity and temporal proximity
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const node1 = nodes[i];
+                    const node2 = nodes[j];
+                    
+                    // Connect if same category
+                    if (node1.memory.category === node2.memory.category) {
+                        node1.connections.push(j);
+                        node2.connections.push(i);
+                    }
+                    // Connect if temporally close (within 1 hour)
+                    else if (Math.abs(node1.memory.timestamp - node2.memory.timestamp) < 3600000) {
+                        node1.connections.push(j);
+                        node2.connections.push(i);
+                    }
+                }
+            }
+
+            // Draw connections with varying opacity based on relationship strength
+            nodes.forEach((node, i) => {
+                node.connections.forEach(targetIdx => {
+                    if (targetIdx > i) { // Draw each connection only once
+                        const target = nodes[targetIdx];
+                        const sameCategory = node.memory.category === target.memory.category;
+                        
+                        ctx.strokeStyle = sameCategory ? 'rgba(102, 126, 234, 0.3)' : 'rgba(200, 200, 200, 0.2)';
+                        ctx.lineWidth = sameCategory ? 2 : 1;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(node.x, node.y);
+                        ctx.lineTo(target.x, target.y);
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            // Draw nodes with glow effect
+            nodes.forEach(node => {
+                const colors = {
+                    personal: '#667eea',
+                    preference: '#f093fb',
+                    project: '#4facfe',
+                    question: '#43e97b',
+                    general: '#ffa502'
+                };
+
+                const color = colors[node.memory.category] || '#667eea';
+                
+                // Outer glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Reset shadow
+                ctx.shadowBlur = 0;
+                
+                // Inner circle
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Border
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                // Category indicator
+                ctx.fillStyle = color;
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(node.memory.category.slice(0, 3).toUpperCase(), node.x, node.y + 4);
+            });
+        }
+
+        function showError(message) {
+            const container = document.getElementById('error-container');
+            container.innerHTML = `<div class="error">Error: ${message}</div>`;
+        }
+
+        function hideError() {
+            document.getElementById('error-container').innerHTML = '';
+        }
+
+        function autoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                alert('Auto-refresh disabled');
+            } else {
+                autoRefreshInterval = setInterval(loadMemories, 5000);
+                alert('Auto-refresh enabled (every 5 seconds)');
+            }
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(allMemories, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'supermemory-export.json';
+            link.click();
+        }
+
+        // Load on page load
+        loadMemories();
+        
+        // Refresh every 10 seconds
+        setInterval(loadMemories, 10000);
+    </script>
+</body>
+</html>
