@@ -291,7 +291,7 @@ Remember: You're not just a storage system - you're a helpful assistant that rem
         const stats = this.fallbackMemory.getStats();
         console.log(`   Storage: 💾 Local`);
         console.log(`   Total Memories: ${stats.totalMemories}`);
-        console.log(`   Vector Dimension: ${stats.vectorDimension}`);
+        console.log(`   Vector Dimension: ${stats.dimension}`);
         console.log(`   Storage Path: ${stats.storagePath}`);
       }
       console.log();
