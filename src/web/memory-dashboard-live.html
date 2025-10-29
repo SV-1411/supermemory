@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supermemory - Live Memory Dashboard</title>
+    <title>GML Dashboard - Memory Intelligence</title>
     <style>
         * {
             margin: 0;
@@ -13,9 +13,10 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            background: linear-gradient(135deg, #00704A 0%, #006341 100%);
+            margin: 0;
             padding: 20px;
+            min-height: 100vh;
         }
 
         .container {
@@ -249,9 +250,13 @@
         <div class="header">
             <h1>
                 <span class="live-indicator"></span>
-                Supermemory Dashboard
+                GML Memory Dashboard
             </h1>
-            <p class="subtitle">Live Memory Visualization & Graph</p>
+            <p class="subtitle">Live Memory Visualization & Intelligence Graph</p>
+            <div class="nav-links" style="display: flex; gap: 15px;">
+                <a href="/" style="color: #00704A; text-decoration: none; padding: 8px 16px; border: 2px solid #00704A; border-radius: 8px; transition: all 0.3s; font-weight: 500;">Chat</a>
+                <a href="/memory-dashboard-live.html" style="color: white; background: #00704A; text-decoration: none; padding: 8px 16px; border: 2px solid #00704A; border-radius: 8px; font-weight: 500;">Dashboard</a>
+            </div>
         </div>
 
         <div id="error-container"></div>
@@ -332,8 +337,14 @@
         // Load memories from API
         async function loadMemories() {
             try {
-                const response = await fetch('http://localhost:3000/api/memories');
+                const apiUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:3000/api/memories?userId=default-user'
+                    : '/.netlify/functions/memories?userId=default-user';
+                    
+                console.log('Fetching memories from:', apiUrl);
+                const response = await fetch(apiUrl);
                 const data = await response.json();
+                console.log('API Response:', data);
 
                 if (!data.success) {
                     showError(data.error);
@@ -341,14 +352,17 @@
                 }
 
                 hideError();
-                displayMemories(data.memories, data.total);
-                drawGraph(data.memories);
+                displayMemories(data.memories || {}, data.total || 0);
+                drawGraph(data.memories || {});
             } catch (error) {
+                console.error('Error loading memories:', error);
                 showError('Failed to load memories: ' + error.message);
             }
         }
 
         function displayMemories(memories, total) {
+            console.log('Displaying memories:', memories, 'Total:', total);
+            
             // Update stats
             document.getElementById('total-memories').textContent = total;
             
@@ -357,7 +371,7 @@
             
             Object.values(memories).forEach(categoryMemories => {
                 categoryMemories.forEach(m => {
-                    totalImportance += m.importance;
+                    totalImportance += m.importance || 0.5;
                     count++;
                 });
             });
@@ -378,13 +392,22 @@
             // Add memories to columns
             Object.keys(memories).forEach(category => {
                 const categoryMemories = memories[category];
-                document.getElementById(`count-${category}`).textContent = categoryMemories.length;
+                console.log(`Category ${category}:`, categoryMemories.length, 'memories');
+                
+                const countElement = document.getElementById(`count-${category}`);
+                if (countElement) {
+                    countElement.textContent = categoryMemories.length;
+                } else {
+                    console.warn(`Count element not found for category: ${category}`);
+                }
                 
                 categoryMemories.forEach(memory => {
                     const card = createMemoryCard(memory);
                     const container = document.getElementById(`${category}-memories`);
                     if (container) {
                         container.appendChild(card);
+                    } else {
+                        console.warn(`Container not found for category: ${category}`);
                     }
                 });
             });
@@ -415,6 +438,9 @@
             return new Date(timestamp).toLocaleDateString();
         }
 
+        let graphNodes = []; // Store nodes globally for hover detection
+        let tooltip = null;
+
         function drawGraph(memories) {
             const canvas = document.getElementById('memory-graph');
             const ctx = canvas.getContext('2d');
@@ -440,27 +466,36 @@
                 return;
             }
 
-            // Force-directed graph layout
-            const nodes = allMems.slice(0, 20).map((m, i) => {
-                // Circular layout with some randomness
-                const angle = (i / allMems.length) * 2 * Math.PI;
+            // Force-directed graph layout with consistent positioning
+            graphNodes = allMems.slice(0, 20).map((m, i) => {
+                // Circular layout with deterministic positioning based on memory ID
+                const angle = (i / Math.min(allMems.length, 20)) * 2 * Math.PI;
                 const radius = Math.min(canvas.width, canvas.height) * 0.35;
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
                 
+                // Use memory ID hash for consistent offset
+                const hash = m.id.split('').reduce((a, b) => {
+                    a = ((a << 5) - a) + b.charCodeAt(0);
+                    return a & a;
+                }, 0);
+                const offsetX = (hash % 40) - 20; // -20 to 20
+                const offsetY = ((hash >> 8) % 40) - 20; // -20 to 20
+                
                 return {
-                    x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 50,
-                    y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 50,
+                    x: centerX + Math.cos(angle) * radius + offsetX,
+                    y: centerY + Math.sin(angle) * radius + offsetY,
                     memory: m,
-                    connections: []
+                    connections: [],
+                    radius: 25
                 };
             });
 
             // Create connections based on category similarity and temporal proximity
-            for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    const node1 = nodes[i];
-                    const node2 = nodes[j];
+            for (let i = 0; i < graphNodes.length; i++) {
+                for (let j = i + 1; j < graphNodes.length; j++) {
+                    const node1 = graphNodes[i];
+                    const node2 = graphNodes[j];
                     
                     // Connect if same category
                     if (node1.memory.category === node2.memory.category) {
@@ -476,13 +511,13 @@
             }
 
             // Draw connections with varying opacity based on relationship strength
-            nodes.forEach((node, i) => {
+            graphNodes.forEach((node, i) => {
                 node.connections.forEach(targetIdx => {
                     if (targetIdx > i) { // Draw each connection only once
-                        const target = nodes[targetIdx];
+                        const target = graphNodes[targetIdx];
                         const sameCategory = node.memory.category === target.memory.category;
                         
-                        ctx.strokeStyle = sameCategory ? 'rgba(102, 126, 234, 0.3)' : 'rgba(200, 200, 200, 0.2)';
+                        ctx.strokeStyle = sameCategory ? 'rgba(0, 112, 74, 0.3)' : 'rgba(200, 200, 200, 0.2)';
                         ctx.lineWidth = sameCategory ? 2 : 1;
                         
                         ctx.beginPath();
@@ -494,16 +529,16 @@
             });
 
             // Draw nodes with glow effect
-            nodes.forEach(node => {
+            graphNodes.forEach(node => {
                 const colors = {
-                    personal: '#667eea',
-                    preference: '#f093fb',
-                    project: '#4facfe',
-                    question: '#43e97b',
-                    general: '#ffa502'
+                    personal: '#00704A',
+                    preference: '#006341',
+                    project: '#4CAF50',
+                    question: '#2E7D32',
+                    general: '#388E3C'
                 };
 
-                const color = colors[node.memory.category] || '#667eea';
+                const color = colors[node.memory.category] || '#00704A';
                 
                 // Outer glow
                 ctx.shadowBlur = 15;
@@ -527,12 +562,182 @@
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 
-                // Category indicator
+                // Show first few words instead of category abbreviation
                 ctx.fillStyle = color;
-                ctx.font = 'bold 10px sans-serif';
+                ctx.font = 'bold 8px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(node.memory.category.slice(0, 3).toUpperCase(), node.x, node.y + 4);
+                const preview = node.memory.content.slice(0, 12) + (node.memory.content.length > 12 ? '...' : '');
+                ctx.fillText(preview, node.x, node.y + 2);
             });
+
+            // Add hover functionality
+            canvas = setupCanvasHover(canvas);
+        }
+
+        function setupCanvasHover(canvas) {
+            // Remove existing tooltip
+            if (tooltip) {
+                tooltip.remove();
+                tooltip = null;
+            }
+
+            // Create tooltip element
+            tooltip = document.createElement('div');
+            tooltip.style.position = 'fixed';
+            tooltip.style.background = 'rgba(0, 0, 0, 0.9)';
+            tooltip.style.color = 'white';
+            tooltip.style.padding = '8px 12px';
+            tooltip.style.borderRadius = '6px';
+            tooltip.style.fontSize = '12px';
+            tooltip.style.maxWidth = '250px';
+            tooltip.style.pointerEvents = 'none';
+            tooltip.style.zIndex = '10000';
+            tooltip.style.display = 'none';
+            tooltip.style.wordWrap = 'break-word';
+            tooltip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            document.body.appendChild(tooltip);
+
+            // Remove existing event listeners by cloning
+            const newCanvas = canvas.cloneNode(true);
+            canvas.parentNode.replaceChild(newCanvas, canvas);
+            
+            // Get the context and redraw
+            const ctx = newCanvas.getContext('2d');
+            redrawCanvas(ctx, newCanvas);
+
+            // Add hover functionality to new canvas
+            newCanvas.addEventListener('mousemove', (e) => {
+                if (!graphNodes || graphNodes.length === 0) return;
+                
+                const rect = newCanvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                let hoveredNode = null;
+                for (let node of graphNodes) {
+                    const distance = Math.sqrt((x - node.x) ** 2 + (y - node.y) ** 2);
+                    if (distance <= node.radius) {
+                        hoveredNode = node;
+                        break;
+                    }
+                }
+
+                if (hoveredNode) {
+                    newCanvas.style.cursor = 'pointer';
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX + 15) + 'px';
+                    tooltip.style.top = (e.clientY - 10) + 'px';
+                    
+                    const timeAgo = getTimeAgo(hoveredNode.memory.timestamp);
+                    const importance = Math.round((hoveredNode.memory.importance || 0.5) * 100);
+                    
+                    tooltip.innerHTML = `
+                        <div style="font-weight: bold; color: #4CAF50; margin-bottom: 4px; text-transform: uppercase;">
+                            ${hoveredNode.memory.category}
+                        </div>
+                        <div style="margin-bottom: 6px; line-height: 1.3;">
+                            ${hoveredNode.memory.content.slice(0, 120)}${hoveredNode.memory.content.length > 120 ? '...' : ''}
+                        </div>
+                        <div style="font-size: 10px; color: #ccc; border-top: 1px solid #444; padding-top: 4px;">
+                            ${timeAgo} • ${importance}% importance
+                        </div>
+                    `;
+                } else {
+                    newCanvas.style.cursor = 'default';
+                    tooltip.style.display = 'none';
+                }
+            });
+
+            newCanvas.addEventListener('mouseleave', () => {
+                newCanvas.style.cursor = 'default';
+                if (tooltip) tooltip.style.display = 'none';
+            });
+            
+            return newCanvas;
+        }
+
+        function redrawCanvas(ctx, canvas) {
+            if (!graphNodes || graphNodes.length === 0) return;
+            
+            // Set canvas size
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 500;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw connections
+            graphNodes.forEach((node, i) => {
+                node.connections.forEach(targetIdx => {
+                    if (targetIdx > i) {
+                        const target = graphNodes[targetIdx];
+                        const sameCategory = node.memory.category === target.memory.category;
+                        
+                        ctx.strokeStyle = sameCategory ? 'rgba(0, 112, 74, 0.3)' : 'rgba(200, 200, 200, 0.2)';
+                        ctx.lineWidth = sameCategory ? 2 : 1;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(node.x, node.y);
+                        ctx.lineTo(target.x, target.y);
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            // Draw nodes
+            graphNodes.forEach(node => {
+                const colors = {
+                    personal: '#00704A',
+                    preference: '#006341',
+                    project: '#4CAF50',
+                    question: '#2E7D32',
+                    general: '#388E3C'
+                };
+
+                const color = colors[node.memory.category] || '#00704A';
+                
+                // Outer glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Reset shadow
+                ctx.shadowBlur = 0;
+                
+                // Inner circle
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Border
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                // Show first few words
+                ctx.fillStyle = color;
+                ctx.font = 'bold 8px sans-serif';
+                ctx.textAlign = 'center';
+                const preview = node.memory.content.slice(0, 12) + (node.memory.content.length > 12 ? '...' : '');
+                ctx.fillText(preview, node.x, node.y + 2);
+            });
+        }
+
+        function getTimeAgo(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+
+            if (days > 0) return `${days}d ago`;
+            if (hours > 0) return `${hours}h ago`;
+            if (minutes > 0) return `${minutes}m ago`;
+            return 'Just now';
         }
 
         function showError(message) {
@@ -556,13 +761,35 @@
         }
 
         function exportData() {
-            const dataStr = JSON.stringify(allMemories, null, 2);
-            const dataBlob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(dataBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'supermemory-export.json';
-            link.click();
+            if (!allMemories || Object.keys(allMemories).length === 0) {
+                alert('No memories to export. Please load memories first.');
+                return;
+            }
+
+            // Create export data with metadata
+            const exportData = {
+                exportDate: new Date().toISOString(),
+                totalMemories: Object.values(allMemories).reduce((sum, arr) => sum + arr.length, 0),
+                categories: Object.keys(allMemories).filter(k => allMemories[k].length > 0),
+                memories: allMemories
+            };
+
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportFileDefaultName = `gml-memories-${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            // Show success message
+            const originalText = document.querySelector('button[onclick="exportData()"]').textContent;
+            document.querySelector('button[onclick="exportData()"]').textContent = 'Exported!';
+            setTimeout(() => {
+                document.querySelector('button[onclick="exportData()"]').textContent = originalText;
+            }, 2000);
         }
 
         // Load on page load

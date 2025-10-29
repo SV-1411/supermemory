@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GML Chat - AI Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #00704A 0%, #006341 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #00704A;
+            font-size: 1.8em;
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-links a {
+            color: #00704A;
+            text-decoration: none;
+            padding: 8px 16px;
+            border: 2px solid #00704A;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover, .nav-links a.active {
+            background: #00704A;
+            color: white;
+        }
+
+        .container {
+            flex: 1;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 600px;
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: #f8f9fa;
+            border-radius: 15px 15px 0 0;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            line-height: 1.4;
+        }
+
+        .message.user .message-content {
+            background: #00704A;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: #f1f3f4;
+            color: #333;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .message.user .message-avatar {
+            background: #00704A;
+            color: white;
+        }
+
+        .message.assistant .message-avatar {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .chat-input {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            border-radius: 0 0 15px 15px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: #00704A;
+        }
+
+        .input-group button {
+            padding: 12px 24px;
+            background: #00704A;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-weight: 500;
+        }
+
+        .input-group button:hover {
+            background: #006341;
+        }
+
+        .input-group button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .status.thinking {
+            color: #00704A;
+        }
+
+        .status.error {
+            color: #dc3545;
+        }
+
+        .memory-info {
+            background: #e8f5e8;
+            border: 1px solid #c8e6c9;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #2e7d32;
+        }
+
+        .storage-info {
+            background: #f3e5f5;
+            border: 1px solid #ce93d8;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: #4a148c;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .storage-info.stored {
+            background: #e8f5e8;
+            border-color: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .storage-info.skipped {
+            background: #fff3e0;
+            border-color: #ffcc02;
+            color: #e65100;
+        }
+
+        .storage-badge {
+            background: rgba(255,255,255,0.8);
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        .facts-list {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #00704A;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>GML Chat</h1>
+        <div class="nav-links">
+            <a href="/" class="active">Chat</a>
+            <a href="/memory-dashboard-live.html">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="chat-container">
+            <div class="chat-header">
+                <h3>Your Personal AI Assistant</h3>
+                <p>Intelligent conversations with perfect memory retention</p>
+            </div>
+
+            <div class="chat-messages" id="messages">
+                <div class="message assistant">
+                    <div class="message-avatar">AI</div>
+                    <div class="message-content">
+                        Hi there! I'm your intelligent assistant with perfect memory. I remember everything we discuss and can help you with various tasks. What would you like to talk about?
+                    </div>
+                </div>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div>Thinking...</div>
+            </div>
+
+            <div class="status" id="status"></div>
+
+            <div class="chat-input">
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        placeholder="Type your message here..." 
+                        maxlength="500"
+                    >
+                    <button id="sendButton" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let conversationHistory = [];
+        let userId = 'default-user'; // Same as terminal chat
+        let conversationId = 'conv-' + Date.now();
+
+        // Auto-focus input
+        document.getElementById('messageInput').focus();
+
+        // Enter key to send
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+
+            // Clear input and disable
+            input.value = '';
+            input.disabled = true;
+            document.getElementById('sendButton').disabled = true;
+
+            // Add user message to UI
+            addMessage('user', message);
+
+            // Show loading
+            showLoading(true);
+            setStatus('Thinking...', 'thinking');
+
+            try {
+                // Call Netlify function or local API
+                const apiUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:3000/api/chat'
+                    : '/.netlify/functions/chat';
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message,
+                        userId,
+                        conversationId,
+                        history: conversationHistory
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to get response');
+                }
+
+                // Add assistant message to UI
+                addMessage('assistant', data.response, data.memoriesUsed, data.storageInfo);
+
+                // Update conversation history
+                conversationHistory.push({ role: 'user', content: message });
+                conversationHistory.push({ role: 'assistant', content: data.response });
+
+                // Keep only last 10 messages
+                if (conversationHistory.length > 20) {
+                    conversationHistory = conversationHistory.slice(-20);
+                }
+
+                setStatus('');
+
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('assistant', 'Sorry, I encountered an error. Please try again.', 0, null);
+                setStatus('Error: ' + error.message, 'error');
+            } finally {
+                // Re-enable input
+                input.disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                input.focus();
+                showLoading(false);
+            }
+        }
+
+        function addMessage(role, content, memoriesUsed = 0, storageInfo = null) {
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'user' ? 'You' : 'AI';
+
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = content;
+
+            // Add memory info for assistant messages
+            if (role === 'assistant' && memoriesUsed > 0) {
+                const memoryInfo = document.createElement('div');
+                memoryInfo.className = 'memory-info';
+                memoryInfo.innerHTML = `🧠 Retrieved ${memoriesUsed} memories`;
+                messageContent.appendChild(memoryInfo);
+            }
+
+            // Add storage info for assistant messages
+            if (role === 'assistant' && storageInfo) {
+                const storageDiv = document.createElement('div');
+                
+                if (storageInfo.stored) {
+                    storageDiv.className = 'storage-info stored';
+                    
+                    const categoryIcons = {
+                        'personal': '👤',
+                        'preference': '⭐',
+                        'project': '🚀',
+                        'question': '❓',
+                        'general': '📝'
+                    };
+                    
+                    const icon = categoryIcons[storageInfo.category] || '💾';
+                    const shortReason = storageInfo.reasoning.length > 50 
+                        ? storageInfo.reasoning.slice(0, 47) + '...' 
+                        : storageInfo.reasoning;
+                    
+                    storageDiv.innerHTML = `
+                        <span>${icon} Stored</span>
+                        <span class="storage-badge">${storageInfo.category}</span>
+                        <span class="storage-badge">${storageInfo.importance}%</span>
+                        <div style="width: 100%; font-size: 10px; opacity: 0.8; margin-top: 2px;">
+                            ${shortReason}
+                        </div>
+                    `;
+                    
+                    if (storageInfo.facts && storageInfo.facts.length > 0) {
+                        const factsDiv = document.createElement('div');
+                        factsDiv.className = 'facts-list';
+                        factsDiv.innerHTML = `💡 ${storageInfo.facts.slice(0, 2).join(', ')}${storageInfo.facts.length > 2 ? '...' : ''}`;
+                        storageDiv.appendChild(factsDiv);
+                    }
+                } else {
+                    storageDiv.className = 'storage-info skipped';
+                    const shortReason = storageInfo.reasoning.length > 60 
+                        ? storageInfo.reasoning.slice(0, 57) + '...' 
+                        : storageInfo.reasoning;
+                    storageDiv.innerHTML = `<span>⏭️ Skipped:</span> <span style="opacity: 0.8;">${shortReason}</span>`;
+                }
+                
+                messageContent.appendChild(storageDiv);
+            }
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(messageContent);
+            messagesContainer.appendChild(messageDiv);
+
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function setStatus(message, type = '') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        // Check if running locally or on Netlify
+        if (window.location.hostname === 'localhost') {
+            setStatus('Running locally - make sure to start the server', 'thinking');
+        } else {
+            setStatus('Connected to Netlify Functions', 'thinking');
+        }
+
+        // Clear status after 3 seconds
+        setTimeout(() => setStatus(''), 3000);
+    </script>
+</body>
+</html>

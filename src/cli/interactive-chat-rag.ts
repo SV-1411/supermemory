@@ -3,6 +3,7 @@
  * Uses Pinecone or local storage with proper persistence
  */
 
+import 'dotenv/config';
 import * as readline from 'readline';
 import { PineconeRAG } from '../rag/PineconeRAG.js';
 import { OpenRouterProvider } from '../providers/OpenRouterProvider.js';
