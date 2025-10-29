@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { PineconeRAG } from '../../src/rag/PineconeRAG.js';
+import { PineconeRAG } from '../../src/rag/PineconeRAG';
 
 let rag: PineconeRAG | null = null;
 let initialized = false;

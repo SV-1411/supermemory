@@ -1,7 +1,7 @@
 import type { Handler } from '@netlify/functions';
-import { PineconeRAG } from '../../src/rag/PineconeRAG.js';
-import { OpenRouterProvider } from '../../src/providers/OpenRouterProvider.js';
-import { SmartMemoryFilter } from '../../src/core/SmartMemoryFilter.js';
+import { PineconeRAG } from '../../src/rag/PineconeRAG';
+import { OpenRouterProvider } from '../../src/providers/OpenRouterProvider';
+import { SmartMemoryFilter } from '../../src/core/SmartMemoryFilter';
 
 let rag: PineconeRAG | null = null;
 let initialized = false;
@@ -15,10 +15,14 @@ async function ensureInit() {
   initialized = true;
 }
 
-export const handler: Handler = async (event) => {
+export const handler: Handler = async (event, context) => {
   try {
     if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: 'Method Not Allowed' };
+      return { 
+        statusCode: 405, 
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: 'Method Not Allowed' }) 
+      };
     }
 
     await ensureInit();
@@ -29,12 +33,20 @@ export const handler: Handler = async (event) => {
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = body.history || [];
 
     if (!message) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'message is required' }) };
+      return { 
+        statusCode: 400, 
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: 'message is required' }) 
+      };
     }
 
     const openrouterKey = process.env.OPENROUTER_API_KEY;
     if (!openrouterKey) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'Missing OPENROUTER_API_KEY' }) };
+      return { 
+        statusCode: 500, 
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: 'Missing OPENROUTER_API_KEY' }) 
+      };
     }
 
     const llm = new OpenRouterProvider(openrouterKey, 'qwen/qwen-2.5-72b-instruct');
@@ -84,16 +96,20 @@ export const handler: Handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({
         ok: true,
         response: result.response,
         memoriesUsed: result.memories.length,
         contextPreview: result.context?.slice(0, 800) || '',
-        storageInfo: storageInfo
-      }),
-      headers: { 'Content-Type': 'application/json' },
+        storageInfo,
+      })
     };
   } catch (e: any) {
-    return { statusCode: 500, body: JSON.stringify({ error: String(e?.message || e) }) };
+    return { 
+      statusCode: 500, 
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ error: String(e?.message || e) }) 
+    };
   }
 };
