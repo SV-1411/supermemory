@@ -13,10 +13,14 @@ async function ensureInit() {
   initialized = true;
 }
 
-export const handler: Handler = async (event) => {
+export const handler: Handler = async (event, _context) => {
   try {
     if (event.httpMethod !== 'GET') {
-      return { statusCode: 405, body: 'Method Not Allowed' };
+      return { 
+        statusCode: 405, 
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: 'Method Not Allowed' }) 
+      };
     }
 
     await ensureInit();
@@ -59,21 +63,21 @@ export const handler: Handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
         success: true,
         memories: grouped,
         total: memories.length
-      }),
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      })
     };
   } catch (error: any) {
     return { 
       statusCode: 500, 
-      body: JSON.stringify({ error: String(error?.message || error) }),
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ error: String(error?.message || error) })
     };
   }
 };

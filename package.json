@@ -39,7 +39,8 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@types/node": "^20.11.5",
+    "@netlify/functions": "^5.0.1",
+    "@types/node": "^20.19.24",
     "@types/uuid": "^9.0.7",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
