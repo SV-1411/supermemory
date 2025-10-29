@@ -127,8 +127,6 @@ npm run web
 When you deploy to Netlify, set these same environment variables in:
 **Netlify Dashboard → Site settings → Environment variables**
 
-- `OPENROUTER_API_KEY` = `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`
-- `PINECONE_API_KEY` = `pcsk_Au1X5_TmMTeM9DRvXpoYmg38GCpWTBTU6yBkDRD3W51McWti6o1sm4oaouxYoSrRwbRfb`
 
 Then your deployed site will work without any manual configuration!
 
