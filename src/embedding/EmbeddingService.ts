@@ -22,6 +22,15 @@ export class EmbeddingService {
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
+    // If running in serverless (e.g., Netlify) or explicitly forced, skip local model entirely
+    const forceRemote = process.env.SUPERMEMORY_FORCE_REMOTE === '1' || process.env.NETLIFY === 'true';
+    if (forceRemote) {
+      console.warn('⚠️ Forcing remote embeddings in serverless environment');
+      this.useRemote = true;
+      this.isInitialized = true;
+      return;
+    }
+
     try {
       console.log(`🧠 Loading embedding model: ${this.modelName}...`);
       // Dynamic import to work in Netlify Functions (ESM-only module)
