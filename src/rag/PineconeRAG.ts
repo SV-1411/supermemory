@@ -5,8 +5,8 @@
 
 import { Pinecone } from '@pinecone-database/pinecone';
 import { v4 as uuidv4 } from 'uuid';
-import { EmbeddingService } from '../embedding/EmbeddingService.js';
-import { Memory, MemoryMetadata, MemoryResult } from '../types/index.js';
+import { EmbeddingService } from '../embedding/EmbeddingService';
+import { Memory, MemoryMetadata, MemoryResult } from '../types/index';
 
 export interface PineconeConfig {
   apiKey: string;

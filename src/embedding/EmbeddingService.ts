@@ -3,10 +3,10 @@
  * Uses Xenova/transformers (runs locally, 100% free)
  */
 
-import { pipeline, Pipeline } from '@xenova/transformers';
+import type { Pipeline } from '@xenova/transformers';
 
 export class EmbeddingService {
-  private model: Pipeline | null = null;
+  private model: any | null = null;
   private modelName: string;
   private isInitialized: boolean = false;
 
@@ -22,6 +22,8 @@ export class EmbeddingService {
     if (this.isInitialized) return;
 
     console.log(`🧠 Loading embedding model: ${this.modelName}...`);
+    // Dynamic import to work in Netlify Functions (ESM-only module)
+    const { pipeline } = await import('@xenova/transformers');
     this.model = await pipeline('feature-extraction', this.modelName);
     this.isInitialized = true;
     console.log('✅ Embedding model loaded successfully');
