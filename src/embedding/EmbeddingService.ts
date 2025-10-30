@@ -122,7 +122,14 @@ export class EmbeddingService {
   }
 
   private async embedRemote(text: string): Promise<number[]> {
-    const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
+    // Prefer OpenAI if key present; fallback to OpenRouter once they add embeddings support
+    const hasOpenAI = !!process.env.OPENAI_API_KEY;
+    const useOpenRouter = !hasOpenAI && !!process.env.OPENROUTER_API_KEY;
+
+    if (!hasOpenAI && !useOpenRouter) {
+      throw new Error('No OpenAI or OpenRouter API key configured for remote embeddings');
+    }
+
     const url = useOpenRouter
       ? 'https://openrouter.ai/api/v1/embeddings'
       : 'https://api.openai.com/v1/embeddings';
@@ -130,7 +137,7 @@ export class EmbeddingService {
       ? (process.env.OPENROUTER_API_KEY as string)
       : (process.env.OPENAI_API_KEY as string);
 
-    // For OpenRouter, model name should be vendor-prefixed
+    // For OpenRouter (future), model must be vendor-prefixed
     const model = useOpenRouter ? 'openai/text-embedding-3-small' : 'text-embedding-3-small';
 
     const resp = await fetch(url, {
