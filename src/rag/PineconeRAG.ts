@@ -40,6 +40,15 @@ export class PineconeRAG {
     
     // Initialize embedding service
     await this.embeddingService.initialize();
+    // Ensure index dimension matches current embedding model
+    const detectedDim = this.embeddingService.getDimension();
+    if (detectedDim !== this.dimension) {
+      // Use a dimension-suffixed index to avoid mismatches
+      this.dimension = detectedDim;
+      if (!this.indexName.endsWith(`-dim${detectedDim}`)) {
+        this.indexName = `${this.indexName}-dim${detectedDim}`;
+      }
+    }
     
     try {
       // Check if index exists
