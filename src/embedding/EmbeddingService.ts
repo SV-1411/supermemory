@@ -117,51 +117,117 @@ export class EmbeddingService {
    * Get the dimension of embeddings produced by this model
    */
   getDimension(): number {
-    // Local model produces 384 dims; remote OpenAI text-embedding-3-small produces 1536 dims
-    return this.useRemote ? 1536 : 384;
+    // Keep a stable dimension (384) so Pinecone index does not need to change
+    return 384;
   }
 
   private async embedRemote(text: string): Promise<number[]> {
-    // Prefer OpenAI if key present; fallback to OpenRouter once they add embeddings support
+    // Provider selection: allow override, otherwise prefer Cohere -> HuggingFace -> OpenAI
+    const providerPref = (process.env.SUPERMEMORY_EMBEDDING_PROVIDER || '').toLowerCase();
+    const hasCohere = !!process.env.COHERE_API_KEY;
+    const hasHF = !!process.env.HF_API_TOKEN;
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
-    const useOpenRouter = !hasOpenAI && !!process.env.OPENROUTER_API_KEY;
 
-    if (!hasOpenAI && !useOpenRouter) {
-      throw new Error('No OpenAI or OpenRouter API key configured for remote embeddings');
+    const chooseProvider = (): 'cohere' | 'hf' | 'openai' => {
+      if (providerPref === 'cohere' && hasCohere) return 'cohere';
+      if (providerPref === 'hf' && hasHF) return 'hf';
+      if (providerPref === 'openai' && hasOpenAI) return 'openai';
+      if (hasCohere) return 'cohere';
+      if (hasHF) return 'hf';
+      if (hasOpenAI) return 'openai';
+      throw new Error('No embedding provider configured. Set COHERE_API_KEY or HF_API_TOKEN (or OPENAI_API_KEY).');
+    };
+
+    const provider = chooseProvider();
+
+    if (provider === 'cohere') {
+      // Cohere: embed-english-light-v3.0 returns 384-dim vectors
+      const resp = await fetch('https://api.cohere.com/v1/embed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.COHERE_API_KEY}`
+        },
+        body: JSON.stringify({
+          texts: [text],
+          model: 'embed-english-light-v3.0',
+          input_type: 'search_document'
+        })
+      });
+      const txt = await resp.text();
+      let json: any = null; try { json = JSON.parse(txt); } catch {}
+      if (!resp.ok) {
+        const message = json?.message || json?.error || txt || 'Unknown error';
+        throw new Error(`Remote embedding failed (Cohere): ${resp.status} ${message}`);
+      }
+      const vec = json?.embeddings?.[0];
+      if (!Array.isArray(vec)) {
+        throw new Error(`Remote embedding response missing embeddings (Cohere): ${txt.slice(0, 300)}`);
+      }
+      return vec as number[];
     }
 
-    const url = useOpenRouter
-      ? 'https://openrouter.ai/api/v1/embeddings'
-      : 'https://api.openai.com/v1/embeddings';
-    const apiKey = useOpenRouter
-      ? (process.env.OPENROUTER_API_KEY as string)
-      : (process.env.OPENAI_API_KEY as string);
+    if (provider === 'hf') {
+      // Hugging Face Inference API: sentence-transformers/all-MiniLM-L6-v2 (384-dim). Returns token embeddings; pool mean.
+      const resp = await fetch('https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.HF_API_TOKEN}`
+        },
+        body: JSON.stringify({ inputs: text, options: { wait_for_model: true } })
+      });
+      const txt = await resp.text();
+      let json: any = null; try { json = JSON.parse(txt); } catch {}
+      if (!resp.ok) {
+        const message = json?.error || txt || 'Unknown error';
+        throw new Error(`Remote embedding failed (HF): ${resp.status} ${message}`);
+      }
+      // Shape can be [tokens][dims] or [dims]
+      if (Array.isArray(json) && Array.isArray(json[0])) {
+        const tokenEmbeds: number[][] = json as number[][];
+        const dims = tokenEmbeds[0].length;
+        const sums = new Array(dims).fill(0);
+        for (const token of tokenEmbeds) {
+          for (let i = 0; i < dims; i++) sums[i] += token[i];
+        }
+        return sums.map(s => s / tokenEmbeds.length);
+      } else if (Array.isArray(json)) {
+        return json as number[];
+      }
+      throw new Error(`Unexpected HF embedding response shape: ${txt.slice(0, 300)}`);
+    }
 
-    // For OpenRouter (future), model must be vendor-prefixed
-    const model = useOpenRouter ? 'openai/text-embedding-3-small' : 'text-embedding-3-small';
-
-    const resp = await fetch(url, {
+    // Fallback to OpenAI if configured (down-project 1536 -> 384 to keep Pinecone dim stable)
+    const resp = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      body: JSON.stringify({ input: text, model })
+      body: JSON.stringify({ input: text, model: 'text-embedding-3-small' })
     });
-
     const txt = await resp.text();
-    let json: any = null;
-    try { json = JSON.parse(txt); } catch { /* ignore */ }
-
+    let json: any = null; try { json = JSON.parse(txt); } catch {}
     if (!resp.ok) {
-      // Prefer structured error if present
       const message = json?.error?.message || txt || 'Unknown error';
-      throw new Error(`Remote embedding failed: ${resp.status} ${message}`);
+      throw new Error(`Remote embedding failed (OpenAI): ${resp.status} ${message}`);
     }
-
-    if (!json || !Array.isArray(json.data) || !json.data[0]?.embedding) {
-      throw new Error(`Remote embedding response missing data: ${txt.slice(0, 300)}`);
+    const vec = json?.data?.[0]?.embedding as number[] | undefined;
+    if (!Array.isArray(vec)) {
+      throw new Error(`Remote embedding response missing data (OpenAI): ${txt.slice(0, 300)}`);
     }
-    return json.data[0].embedding as number[];
+    // Down-project 1536 -> 384 by averaging non-overlapping windows of 4
+    const factor = Math.floor(vec.length / 384) || 1;
+    const out = new Array(384).fill(0);
+    for (let i = 0; i < 384; i++) {
+      let sum = 0; let cnt = 0;
+      for (let j = 0; j < factor; j++) {
+        const idx = i * factor + j;
+        if (idx < vec.length) { sum += vec[idx]; cnt++; }
+      }
+      out[i] = cnt ? (sum / cnt) : 0;
+    }
+    return out;
   }
 }
