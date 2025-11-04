@@ -10,6 +10,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { Pinecone } from '@pinecone-database/pinecone';
 import { PineconeRAG } from '../rag/PineconeRAG.js';
+import { EmbeddingService } from '../embedding/EmbeddingService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,8 @@ const PORT = 3000;
 let pinecone: Pinecone | null = null;
 // Initialize RAG for chat
 let rag: PineconeRAG | null = null;
+// Initialize embedding service for chat queries
+let embeddingService: EmbeddingService | null = null;
 
 async function initializePinecone() {
   const pineconeKey = process.env.PINECONE_API_KEY;
@@ -37,6 +40,11 @@ async function initializePinecone() {
       });
       await rag.initialize();
       console.log('✅ Pinecone RAG initialized for chat');
+      
+      // Initialize embedding service
+      embeddingService = new EmbeddingService();
+      await embeddingService.initialize();
+      console.log('✅ Embedding service initialized');
     } catch (error) {
       console.error('⚠️  Pinecone initialization failed:', error);
     }
@@ -211,12 +219,84 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        const result = await rag.retrieveAndGenerate(message, llm, {
-          topK: 10,
-          filter: { userId },
-          threshold: 0.3,
-          systemPrompt: contextPrompt,
-        });
+        // Retrieve memories from ALL indexes
+        const indexList = await pinecone!.listIndexes();
+        const supermemoryIndexes = indexList.indexes?.filter((idx: any) => 
+          idx.name.includes('supermemory')
+        ) || [];
+
+        console.log('Querying indexes:', supermemoryIndexes.map((i: any) => i.name));
+
+        // Generate query embedding
+        const queryEmbedding = await embeddingService!.embed(message);
+        
+        const allMemories: any[] = [];
+
+        // Query each index with appropriate dimension
+        for (const idx of supermemoryIndexes) {
+          try {
+            const index = pinecone!.index(idx.name);
+            
+            // For 384-dim index, use our query embedding directly
+            // For other dims, use a zero vector (less accurate but includes all data)
+            const queryVector = idx.dimension === 384 
+              ? queryEmbedding 
+              : new Array(idx.dimension).fill(0);
+            
+            const queryResponse = await index.query({
+              vector: queryVector,
+              topK: 10,
+              includeMetadata: true,
+              filter: { userId: { $eq: userId } }
+            });
+
+            for (const match of queryResponse.matches || []) {
+              const metadata = match.metadata as any;
+              if (metadata.content && match.score && match.score >= 0.3) {
+                allMemories.push({
+                  id: match.id,
+                  content: metadata.content,
+                  similarity: match.score,
+                  timestamp: metadata.timestamp || Date.now(),
+                  importance: metadata.importance || 0.5,
+                  category: metadata.category || 'general'
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`Error querying index ${idx.name}:`, err);
+          }
+        }
+
+        // Sort by similarity and take top 10
+        allMemories.sort((a, b) => b.similarity - a.similarity);
+        const topMemories = allMemories.slice(0, 10);
+
+        console.log(`Retrieved ${topMemories.length} memories from ${supermemoryIndexes.length} indexes`);
+
+        // Build context with memories
+        let fullContext = contextPrompt + '\n\n=== RELEVANT MEMORIES ===\n\n';
+        if (topMemories.length > 0) {
+          topMemories.forEach((mem, idx) => {
+            const date = new Date(mem.timestamp).toLocaleString();
+            fullContext += `[Memory ${idx + 1}] (Relevance: ${(mem.similarity * 100).toFixed(1)}%)\n`;
+            fullContext += `Time: ${date}\n`;
+            fullContext += `Content: ${mem.content}\n\n`;
+          });
+        } else {
+          fullContext += 'No relevant memories found.\n\n';
+        }
+        fullContext += '=== END MEMORIES ===\n\n';
+        fullContext += `Current Query: ${message}`;
+
+        // Generate response with LLM
+        const response = await llm.generateResponse(fullContext);
+
+        const result = {
+          response,
+          memories: topMemories,
+          context: fullContext
+        };
 
         // Smart filter store
         const decision = await smartFilter.analyzeConversation(message, result.response);
