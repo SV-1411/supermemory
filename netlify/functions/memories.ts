@@ -1,16 +1,14 @@
 import type { Handler } from '@netlify/functions';
-import { PineconeRAG } from '../../src/rag/PineconeRAG';
+import { Pinecone } from '@pinecone-database/pinecone';
 
-let rag: PineconeRAG | null = null;
-let initialized = false;
+let pinecone: Pinecone | null = null;
 
-async function ensureInit() {
-  if (initialized) return;
+async function ensurePinecone() {
+  if (pinecone) return pinecone;
   const pineconeKey = process.env.PINECONE_API_KEY;
   if (!pineconeKey) throw new Error('Missing PINECONE_API_KEY');
-  rag = new PineconeRAG({ apiKey: pineconeKey, indexName: 'supermemory', dimension: 384 });
-  await rag.initialize();
-  initialized = true;
+  pinecone = new Pinecone({ apiKey: pineconeKey });
+  return pinecone;
 }
 
 export const handler: Handler = async (event, _context) => {
@@ -23,16 +21,50 @@ export const handler: Handler = async (event, _context) => {
       };
     }
 
-    await ensureInit();
-
+    const pc = await ensurePinecone();
     const userId = event.queryStringParameters?.userId || 'default-user';
 
-    // Retrieve all memories (empty query with low threshold)
-    const memories = await rag!.retrieve('', {
-      topK: 100,
-      threshold: 0,
-      filter: { userId }
-    });
+    // List all supermemory indexes
+    const indexList = await pc.listIndexes();
+    const supermemoryIndexes = indexList.indexes?.filter((idx: any) => 
+      idx.name.includes('supermemory')
+    ) || [];
+
+    console.log('Found indexes:', supermemoryIndexes.map((i: any) => i.name));
+
+    const allMemories: any[] = [];
+
+    // Query each index
+    for (const idx of supermemoryIndexes) {
+      try {
+        const index = pc.index(idx.name);
+        
+        // Query with zero vector to get all memories
+        const queryResponse = await index.query({
+          vector: new Array(idx.dimension).fill(0),
+          topK: 100,
+          includeMetadata: true,
+          filter: { userId: { $eq: userId } }
+        });
+
+        // Convert to memory format
+        for (const match of queryResponse.matches || []) {
+          const metadata = match.metadata as any;
+          if (metadata.content) {
+            allMemories.push({
+              id: match.id,
+              content: metadata.content,
+              category: metadata.category || 'general',
+              importance: metadata.importance || 0.5,
+              timestamp: metadata.timestamp || Date.now(),
+              userId: metadata.userId || userId
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Error querying index ${idx.name}:`, err);
+      }
+    }
 
     // Group by category
     const grouped = {
@@ -43,21 +75,12 @@ export const handler: Handler = async (event, _context) => {
       general: [] as any[]
     };
 
-    memories.forEach(result => {
-      const category = (result.memory.metadata as any).category || 'general';
-      const item = {
-        id: result.memory.id,
-        content: result.memory.content,
-        category,
-        importance: result.memory.metadata.importance || 0.5,
-        timestamp: result.memory.timestamp,
-        userId: result.memory.metadata.userId
-      };
-
+    allMemories.forEach(mem => {
+      const category = mem.category || 'general';
       if (grouped[category as keyof typeof grouped]) {
-        grouped[category as keyof typeof grouped].push(item);
+        grouped[category as keyof typeof grouped].push(mem);
       } else {
-        grouped.general.push(item);
+        grouped.general.push(mem);
       }
     });
 
@@ -70,14 +93,18 @@ export const handler: Handler = async (event, _context) => {
       body: JSON.stringify({
         success: true,
         memories: grouped,
-        total: memories.length
+        total: allMemories.length
       })
     };
   } catch (error: any) {
+    console.error('Error in memories function:', error);
     return { 
       statusCode: 500, 
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ error: String(error?.message || error) })
+      body: JSON.stringify({ 
+        success: false,
+        error: String(error?.message || error) 
+      })
     };
   }
 };

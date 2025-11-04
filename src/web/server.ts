@@ -8,28 +8,23 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { PineconeRAG } from '../rag/PineconeRAG.js';
+import { Pinecone } from '@pinecone-database/pinecone';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 
-// Initialize Pinecone RAG
-let rag: PineconeRAG | null = null;
+// Initialize Pinecone client
+let pinecone: Pinecone | null = null;
 
-async function initializeRAG() {
+async function initializePinecone() {
   const pineconeKey = process.env.PINECONE_API_KEY;
   
   if (pineconeKey) {
     try {
-      rag = new PineconeRAG({
-        apiKey: pineconeKey,
-        indexName: 'supermemory',
-        dimension: 384
-      });
-      await rag.initialize();
-      console.log('✅ Pinecone RAG initialized for dashboard');
+      pinecone = new Pinecone({ apiKey: pineconeKey });
+      console.log('✅ Pinecone client initialized for dashboard');
     } catch (error) {
       console.error('⚠️  Pinecone initialization failed:', error);
     }
@@ -69,7 +64,7 @@ const server = http.createServer(async (req, res) => {
   // API: Get all memories
   if (req.url?.startsWith('/api/memories') && req.method === 'GET') {
     try {
-      if (!rag) {
+      if (!pinecone) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Pinecone not initialized' }));
         return;
@@ -79,12 +74,47 @@ const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const userId = url.searchParams.get('userId') || 'default-user';
 
-      // Retrieve all memories (empty query with low threshold)
-      const memories = await rag.retrieve('', {
-        topK: 100,
-        threshold: 0,
-        filter: { userId }
-      });
+      // List all supermemory indexes
+      const indexList = await pinecone.listIndexes();
+      const supermemoryIndexes = indexList.indexes?.filter((idx: any) => 
+        idx.name.includes('supermemory')
+      ) || [];
+
+      console.log('Found indexes:', supermemoryIndexes.map((i: any) => i.name));
+
+      const allMemories: any[] = [];
+
+      // Query each index
+      for (const idx of supermemoryIndexes) {
+        try {
+          const index = pinecone.index(idx.name);
+          
+          // Query with zero vector to get all memories
+          const queryResponse = await index.query({
+            vector: new Array(idx.dimension).fill(0),
+            topK: 100,
+            includeMetadata: true,
+            filter: { userId: { $eq: userId } }
+          });
+
+          // Convert to memory format
+          for (const match of queryResponse.matches || []) {
+            const metadata = match.metadata as any;
+            if (metadata.content) {
+              allMemories.push({
+                id: match.id,
+                content: metadata.content,
+                category: metadata.category || 'general',
+                importance: metadata.importance || 0.5,
+                timestamp: metadata.timestamp || Date.now(),
+                userId: metadata.userId || userId
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`Error querying index ${idx.name}:`, err);
+        }
+      }
 
       // Group by category
       const grouped = {
@@ -95,21 +125,12 @@ const server = http.createServer(async (req, res) => {
         general: [] as any[]
       };
 
-      memories.forEach(result => {
-        const category = (result.memory.metadata as any).category || 'general';
-        const item = {
-          id: result.memory.id,
-          content: result.memory.content,
-          category,
-          importance: result.memory.metadata.importance || 0.5,
-          timestamp: result.memory.timestamp,
-          userId: result.memory.metadata.userId
-        };
-
+      allMemories.forEach(mem => {
+        const category = mem.category || 'general';
         if (grouped[category as keyof typeof grouped]) {
-          grouped[category as keyof typeof grouped].push(item);
+          grouped[category as keyof typeof grouped].push(mem);
         } else {
-          grouped.general.push(item);
+          grouped.general.push(mem);
         }
       });
 
@@ -117,7 +138,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({
         success: true,
         memories: grouped,
-        total: memories.length
+        total: allMemories.length
       }));
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -254,13 +275,14 @@ const server = http.createServer(async (req, res) => {
 async function start() {
   console.log('🚀 Starting Memory Dashboard Server...\n');
   
-  await initializeRAG();
+  await initializePinecone();
   
   server.listen(PORT, () => {
     console.log('╔════════════════════════════════════════════════════════╗');
     console.log('║     🧠 SUPERMEMORY DASHBOARD - LIVE VISUALIZATION     ║');
     console.log('╚════════════════════════════════════════════════════════╝\n');
-    console.log(`📊 Dashboard: http://localhost:${PORT}`);
+    console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
+    console.log(`💬 Chat: http://localhost:${PORT}`);
     console.log(`🔌 API: http://localhost:${PORT}/api/memories\n`);
     console.log('Press Ctrl+C to stop\n');
   });
