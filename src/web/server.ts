@@ -9,14 +9,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { Pinecone } from '@pinecone-database/pinecone';
+import { PineconeRAG } from '../rag/PineconeRAG.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 
-// Initialize Pinecone client
+// Initialize Pinecone client for dashboard
 let pinecone: Pinecone | null = null;
+// Initialize RAG for chat
+let rag: PineconeRAG | null = null;
 
 async function initializePinecone() {
   const pineconeKey = process.env.PINECONE_API_KEY;
@@ -25,6 +28,15 @@ async function initializePinecone() {
     try {
       pinecone = new Pinecone({ apiKey: pineconeKey });
       console.log('✅ Pinecone client initialized for dashboard');
+      
+      // Also initialize RAG for chat endpoint
+      rag = new PineconeRAG({
+        apiKey: pineconeKey,
+        indexName: 'supermemory',
+        dimension: 384
+      });
+      await rag.initialize();
+      console.log('✅ Pinecone RAG initialized for chat');
     } catch (error) {
       console.error('⚠️  Pinecone initialization failed:', error);
     }
